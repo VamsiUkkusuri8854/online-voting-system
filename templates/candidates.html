@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Candidates | VoteSafe</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('votesafe_theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+    <style>
+        body {
+            position: relative;
+            background: transparent !important;
+        }
+        
+        .dashboard-bg-wrapper {
+            position: fixed;
+            inset: 0;
+            z-index: -2;
+            background-image: url("{{ url_for('static', filename='images/dashboard_bg.png') }}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            filter: blur(4px);
+            transform: scale(1.02);
+        }
+        
+        .dashboard-bg-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            background-color: var(--bg-body);
+            opacity: 0.85;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-bg-wrapper"></div>
+    <div class="dashboard-bg-overlay"></div>
+    
+    <div id="loader" class="loading-overlay"><div class="spinner"></div></div>
+
+    <nav>
+        <div class="logo">VOTE_SAFE</div>
+        <div class="nav-links">
+            <a href="/" class="nav-item"><i class="fa-solid fa-house" style="margin-right: 6px;"></i>Home</a>
+            <a href="/dashboard" class="nav-item"><i class="fa-solid fa-table-columns" style="margin-right: 6px;"></i>Dashboard</a>
+            <a href="/candidates" class="nav-item active"><i class="fa-solid fa-users" style="margin-right: 6px;"></i>Candidates</a>
+            <a href="/results" class="nav-item"><i class="fa-solid fa-chart-pie" style="margin-right: 6px;"></i>Results</a>
+            <a href="/admin" id="adminLink" class="nav-item hidden"><i class="fa-solid fa-shield-halved" style="margin-right: 6px;"></i>Admin</a>
+            <div class="theme-toggle" onclick="ThemeManager.toggle()" title="Toggle Theme">
+                <i class="fas fa-sun"></i>
+            </div>
+            <button class="btn btn-outline" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</button>
+        </div>
+    </nav>
+
+    <div class="container animate-fade">
+        <header style="text-align: center; margin-bottom: 3rem;">
+            <h1 class="text-gradient" style="font-size: 2.5rem; margin-bottom: 1rem;">Candidate Selection</h1>
+            <p style="color: var(--text-secondary); max-width: 600px; margin: 0 auto;">
+                Browse the officially registered candidates below. Once you cast your vote, it is final and cannot be changed.
+            </p>
+        </header>
+
+        <!-- Filter Bar -->
+        <div class="glass filter-bar animate-slide">
+            <div class="search-input-wrapper">
+                <input type="text" id="searchInput" placeholder="Search candidates by name..." oninput="handleFilters()">
+            </div>
+            <select id="partyFilter" class="filter-select" onchange="handleFilters()">
+                <option value="all">All Parties</option>
+            </select>
+        </div>
+
+        <div id="votingGrid" class="voting-grid">
+            <!-- Loading Skeletons or Empty state -->
+             <p style="grid-column: 1/-1; text-align: center; color: var(--text-secondary)">Loading candidates...</p>
+        </div>
+    </div>
+
+
+    <script src="{{ url_for('static', filename='js/auth_handler.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    <script>
+        let hasVoted = false;
+        let allCandidates = [];
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!Auth.isAuthenticated()) {
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                // Sync voting window status
+                await syncVotingWindow();
+                setInterval(syncVotingWindow, 5000); // 5s sync for candidates
+
+                const user = await Auth.fetch('/api/user');
+                hasVoted = user.has_voted;
+
+                await loadCandidates();
+            } catch (err) {
+                console.error(err);
+                Auth.logout();
+            } finally {
+                hideLoader();
+            }
+        });
+
+        async function syncVotingWindow() {
+            try {
+                const status = await Auth.fetch('/api/voting-status');
+                const bannerId = 'votingClosedBanner';
+                const existingBanner = document.getElementById(bannerId);
+
+                if (!status.is_active) {
+                    if (!existingBanner) {
+                        const banner = document.createElement('div');
+                        banner.id = bannerId;
+                        banner.className = 'glass animate-slide';
+                        banner.style.padding = '1.5rem';
+                        banner.style.marginBottom = '2rem';
+                        banner.style.textAlign = 'center';
+                        banner.style.borderLeft = '6px solid var(--error)';
+                        banner.innerHTML = `
+                            <h2 style="color: var(--error); margin-bottom: 0.5rem;">Election Closed</h2>
+                            <p style="color: var(--text-secondary)">The voting window has concluded. No further votes can be cast at this time.</p>
+                        `;
+                        document.querySelector('.container').insertBefore(banner, document.getElementById('votingGrid'));
+                    }
+                    
+                    // Disable all buttons and change text
+                    document.querySelectorAll('.vote-btn').forEach(btn => {
+                        btn.disabled = true;
+                        if (!btn.classList.contains('status-voted')) {
+                            btn.textContent = 'Voting Closed';
+                            btn.className = 'btn btn-outline vote-btn';
+                        }
+                    });
+                }
+            } catch (err) { console.error('Lockout sync error:', err); }
+        }
+
+        function hideLoader() {
+            const loader = document.getElementById('loader');
+            if (loader) {
+                loader.style.opacity = '0';
+                setTimeout(() => loader.classList.add('hidden'), 500);
+            }
+        }
+
+        async function loadCandidates() {
+            try {
+                allCandidates = await Auth.fetch('/api/candidates');
+                populateParties(allCandidates);
+                renderCandidates(allCandidates);
+            } catch (err) {
+                console.error('Error loading candidates:', err);
+                document.getElementById('votingGrid').innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: var(--error)">Failed to load candidates.</p>`;
+            }
+        }
+
+        function populateParties(candidates) {
+            const select = document.getElementById('partyFilter');
+            const parties = [...new Set(candidates.map(c => c.party))];
+            
+            parties.forEach(party => {
+                const option = document.createElement('option');
+                option.value = party;
+                option.textContent = party;
+                select.appendChild(option);
+            });
+        }
+
+        function handleFilters() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const selectedParty = document.getElementById('partyFilter').value;
+
+            const filtered = allCandidates.filter(c => {
+                const matchesSearch = c.name.toLowerCase().includes(searchTerm);
+                const matchesParty = selectedParty === 'all' || c.party === selectedParty;
+                return matchesSearch && matchesParty;
+            });
+
+            renderCandidates(filtered);
+        }
+
+        function renderCandidates(candidates) {
+            const grid = document.getElementById('votingGrid');
+            grid.innerHTML = '';
+
+            if (candidates.length === 0) {
+                grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: var(--text-secondary)">No candidates match your filters.</p>';
+                return;
+            }
+
+            candidates.forEach((c, index) => {
+                const card = document.createElement('div');
+                card.className = 'glass candidate-card animate-slide';
+                card.style.animationDelay = `${index * 0.05}s`;
+                
+                card.innerHTML = `
+                    <div style="margin-bottom: 1.5rem;">
+                        <i class="fa-solid fa-user-tie text-gradient" style="font-size: 4rem; opacity: 0.9;"></i>
+                    </div>
+                    <div class="candidate-name">${c.name}</div>
+                    <div class="candidate-party">${c.party}</div>
+                    <button class="btn ${hasVoted ? 'btn-outline' : 'btn-primary'} vote-btn" 
+                        data-id="${c.id}"
+                        onclick="voteFor('${c.id}')" 
+                        ${hasVoted ? 'disabled' : ''} style="width: 100%">
+                        ${hasVoted ? 'Voted' : 'Cast Vote'}
+                    </button>
+                    ${hasVoted ? '<div class="status-badge status-voted" style="margin-top: 1rem">SECURED</div>' : ''}
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+
+        async function voteFor(candidateId) {
+            if (hasVoted) return;
+
+            const clickedBtn = document.querySelector(`.vote-btn[data-id="${candidateId}"]`);
+            const allBtns = document.querySelectorAll('.vote-btn');
+
+            try {
+                // Instant Feedback: Disable and change text
+                allBtns.forEach(b => b.disabled = true);
+                clickedBtn.textContent = 'Voting...';
+                clickedBtn.classList.add('pulse-animation');
+                
+                const response = await Auth.fetch('/api/cast-vote', {
+                    method: 'POST',
+                    body: JSON.stringify({ candidate_id: candidateId })
+                });
+
+                hasVoted = true;
+                Notifier.show('Vote submitted successfully!', 'success');
+                
+                // Update UI for all cards
+                document.querySelectorAll('.candidate-card').forEach(card => {
+                    const cardBtn = card.querySelector('.vote-btn');
+                    cardBtn.className = 'btn btn-outline vote-btn';
+                    cardBtn.textContent = 'Voted';
+                    cardBtn.classList.remove('pulse-animation');
+                    
+                    if (!card.querySelector('.status-badge')) {
+                        const badge = document.createElement('div');
+                        badge.className = 'status-badge status-voted';
+                        badge.style.marginTop = '1rem';
+                        badge.textContent = 'SECURED';
+                        card.appendChild(badge);
+                    }
+                });
+
+            } catch (err) {
+                // If the error confirms they already voted, sync the UI
+                if (err.message.toLowerCase().includes('already voted')) {
+                    hasVoted = true;
+                    Notifier.show('You have already voted!', 'error');
+                    setTimeout(() => location.reload(), 2000); 
+                    return;
+                }
+
+                // Re-enable on other errors
+                allBtns.forEach(b => b.disabled = false);
+                clickedBtn.textContent = 'Cast Vote';
+                clickedBtn.classList.remove('pulse-animation');
+                Notifier.show(err.message || 'Error casting vote', 'error');
+            }
+        }
+    </script>
+</body>
+</html>

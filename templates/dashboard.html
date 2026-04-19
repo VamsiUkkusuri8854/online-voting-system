@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | VoteSafe</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('votesafe_theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+    <style>
+        /* Dashboard Themed Background */
+        body {
+            position: relative;
+            background: transparent !important;
+        }
+        
+        .dashboard-bg-wrapper {
+            position: fixed;
+            inset: 0;
+            z-index: -2;
+            background-image: url("{{ url_for('static', filename='images/dashboard_bg.png') }}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            filter: blur(4px);
+            transform: scale(1.02); /* Prevents blurry border edge glow */
+        }
+        
+        .dashboard-bg-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            background-color: var(--bg-body);
+            opacity: 0.85; /* Softly overlays the theme color to ensure high text contrast */
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-bg-wrapper"></div>
+    <div class="dashboard-bg-overlay"></div>
+
+    <div id="loader" class="loading-overlay"><div class="spinner"></div></div>
+
+    <nav>
+        <div class="logo">VOTE_SAFE</div>
+        <div class="nav-links">
+            <a href="/" class="nav-item"><i class="fa-solid fa-house" style="margin-right: 6px;"></i>Home</a>
+            <a href="/dashboard" class="nav-item active"><i class="fa-solid fa-table-columns" style="margin-right: 6px;"></i>Dashboard</a>
+            <a href="/candidates" class="nav-item"><i class="fa-solid fa-users" style="margin-right: 6px;"></i>Candidates</a>
+            <a href="/results" class="nav-item"><i class="fa-solid fa-chart-pie" style="margin-right: 6px;"></i>Results</a>
+            <a href="/admin" id="adminLink" class="nav-item hidden"><i class="fa-solid fa-shield-halved" style="margin-right: 6px;"></i>Admin</a>
+            <div class="theme-toggle" onclick="ThemeManager.toggle()" title="Toggle Theme">
+                <i class="fas fa-sun"></i>
+            </div>
+            <button class="btn btn-outline" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</button>
+        </div>
+    </nav>
+
+    <div class="container animate-fade">
+        <header class="glass" style="margin-bottom: 4rem; padding: 3rem 4rem; border-radius: 24px; display: flex; align-items: center; justify-content: space-between; position: relative; overflow: hidden;">
+            <div style="position: relative; z-index: 2;">
+                <h1 class="text-gradient" style="font-size: 3rem; margin-bottom: 0.5rem; line-height: 1.2;">Welcome back,<br><span id="dashUserName">User</span>!</h1>
+                <p style="color: var(--text-secondary); font-size: 1.1rem; max-width: 400px; margin-top: 1rem;">Prepare your vote securely using advanced cryptographic polling. Track your election status below.</p>
+            </div>
+            <div style="opacity: 0.6; padding-right: 2rem; position: relative; z-index: 1;">
+                <i class="fa-solid fa-check-to-slot text-gradient" style="font-size: 8rem; opacity: 0.3;"></i>
+            </div>
+        </header>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2rem;">
+            <!-- Election Countdown (NEW) -->
+            <div class="glass dash-card animate-slide">
+                <h3 style="margin-bottom: 1.5rem; font-size: 1.2rem;"><i class="fa-solid fa-stopwatch" style="color: var(--accent-blue); margin-right: 0.6rem;"></i>Election Countdown</h3>
+                <div id="countdownContainer" style="text-align: center; padding: 1.5rem 0;">
+                    <div id="timerDisplay" class="text-gradient" style="font-size: 3rem; font-weight: 800; font-variant-numeric: tabular-nums;">--:--:--</div>
+                    <div id="timerLabel" style="color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; margin-top: 0.5rem; font-weight: 600;">Time Remaining</div>
+                </div>
+                <div id="electionStatusBadge" class="status-badge" style="width: 100%; text-align: center; margin-top: 1rem;">Syncing...</div>
+            </div>
+
+            <!-- Voting Status Card -->
+            <div class="glass dash-card animate-slide" style="animation-delay: 0.1s;">
+                <h3 style="margin-bottom: 1.5rem; font-size: 1.2rem;"><i class="fa-solid fa-person-booth" style="color: var(--success); margin-right: 0.6rem;"></i>Voting Status</h3>
+                <div id="statusContainer" style="margin-bottom: 2rem;">
+                    <!-- Injected by JS -->
+                </div>
+                <div id="actionContainer">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+
+            <!-- Quick Stats/Info Card -->
+            <div class="glass dash-card animate-slide" style="animation-delay: 0.1s;">
+                <h3 style="margin-bottom: 1.5rem; font-size: 1.2rem;"><i class="fa-solid fa-server" style="color: var(--text-secondary); margin-right: 0.6rem;"></i>System Information</h3>
+                <ul style="list-style: none; color: var(--text-secondary);">
+                    <li style="margin-bottom: 1rem; display: flex; justify-content: space-between;">
+                        <span>Security Protocol:</span>
+                        <span style="color: var(--text-primary); font-weight: 600;">JWT v2.0</span>
+                    </li>
+                    <li style="margin-bottom: 1rem; display: flex; justify-content: space-between;">
+                        <span>Encryption:</span>
+                        <span style="color: var(--text-primary); font-weight: 600;">HS256</span>
+                    </li>
+                    <li style="display: flex; justify-content: space-between;">
+                        <span>Network Status:</span>
+                        <span style="color: var(--success); font-weight: 600;">Connected</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Candidacy Request Card (NEW) -->
+            <div id="candidacyCard" class="glass dash-card animate-slide" style="animation-delay: 0.2s; border-left: 6px solid var(--accent-blue);">
+                <h3 style="margin-bottom: 1.5rem; font-size: 1.2rem;"><i class="fa-solid fa-user-tie" style="color: var(--accent-blue); margin-right: 0.6rem;"></i>Become a Candidate</h3>
+                <div id="candidacyFormWrapper">
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem;">Launch your political career by requesting candidacy for the current election.</p>
+                    <form id="candRequestForm">
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <input type="text" id="reqName" placeholder="Candidate Name" required
+                                style="width: 100%; padding: 0.8rem; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-primary); outline: none;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 1.5rem;">
+                            <input type="text" id="reqParty" placeholder="Party Name" required
+                                style="width: 100%; padding: 0.8rem; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-primary); outline: none;">
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="width: 100%">Submit Application</button>
+                    </form>
+                </div>
+                <div id="candidacyStatusWrapper" class="hidden" style="text-align: center; padding: 1rem 0;">
+                    <div id="reqStatusBadge" class="status-badge" style="width: 100%; margin-bottom: 1rem;">Pending</div>
+                    <div style="font-size: 0.9rem; font-weight: 600;" id="reqInfoDisplay">--</div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.2rem;" id="reqPartyDisplay">--</div>
+                </div>
+            </div>
+
+            <!-- Vote History Card -->
+            <div id="voteHistoryCard" class="glass dash-card animate-slide hidden" style="animation-delay: 0.2s; border-left: 6px solid var(--accent-green);">
+                <h3 style="margin-bottom: 1.5rem; font-size: 1.2rem;"><i class="fa-solid fa-fingerprint" style="color: var(--success); margin-right: 0.6rem;"></i>Your Cast Vote</h3>
+                <div id="historyDetails">
+                    <div style="font-size: 1.4rem; font-weight: 700; color: var(--text-primary);" id="histCandName">--</div>
+                    <div style="color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; margin-top: 0.2rem;" id="histCandParty">--</div>
+                    
+                    <div style="margin-top: 2rem; border-top: 1px solid var(--glass-border); padding-top: 1rem;">
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">TIMESTAMP</div>
+                        <div style="font-size: 0.9rem; font-weight: 600;" id="histTimestamp">--</div>
+                    </div>
+                </div>
+                <div class="status-badge status-voted" style="margin-top: 1.5rem; width: 100%; text-align: center;">Verified & Secured</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/auth_handler.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    <script>
+        let countdownInterval = null;
+        let remainingSeconds = 0;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!Auth.isAuthenticated()) {
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                // Sync status and start countdown
+                await syncVotingStatus();
+                countdownInterval = setInterval(() => {
+                    if (remainingSeconds > 0) {
+                        remainingSeconds--;
+                        updateTimerDisplay();
+                    }
+                }, 1000);
+
+                // Re-sync with server every 30s for accuracy
+                setInterval(syncVotingStatus, 30000);
+
+                const user = await Auth.fetch('/api/user');
+                document.getElementById('dashUserName').textContent = user.name;
+                
+                const statusContainer = document.getElementById('statusContainer');
+                const actionContainer = document.getElementById('actionContainer');
+
+                if (user.has_voted) {
+                    statusContainer.innerHTML = `
+                        <div class="status-badge status-voted">Already Voted</div>
+                        <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.9rem;">
+                            Your vote has been securely recorded. You cannot vote again in this session.
+                        </p>
+                    `;
+                    actionContainer.innerHTML = `<button class="btn btn-outline" style="width: 100%" disabled>Voting Closed</button>`;
+                    
+                    // Fetch and show history
+                    await fetchVoteHistory();
+                } else {
+                    statusContainer.innerHTML = `
+                        <div class="status-badge status-pending">You have not voted yet</div>
+                        <p style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.9rem;">
+                            The polls are open. Head over to the Candidates section to cast your vote.
+                        </p>
+                    `;
+                    actionContainer.innerHTML = `<a href="/candidates" class="btn btn-primary" style="width: 100%; text-decoration: none;">Proceed to Vote</a>`;
+                }
+
+                // Sync Candidacy Status
+                await syncCandidacyStatus();
+
+            } catch (err) {
+                console.error(err);
+                Auth.logout();
+            } finally {
+                setTimeout(() => {
+                    document.getElementById('loader').style.opacity = '0';
+                    setTimeout(() => document.getElementById('loader').classList.add('hidden'), 500);
+                }, 500);
+            }
+        });
+
+        async function syncVotingStatus() {
+            try {
+                const status = await Auth.fetch('/api/voting-status');
+                remainingSeconds = status.remaining_seconds;
+                
+                const badge = document.getElementById('electionStatusBadge');
+                if (status.is_active) {
+                    badge.textContent = 'ELECTION LIVE';
+                    badge.className = 'status-badge status-voted';
+                } else {
+                    badge.textContent = 'VOTING CLOSED';
+                    badge.className = 'status-badge status-pending';
+                    remainingSeconds = 0;
+                }
+                updateTimerDisplay();
+            } catch (err) { console.error('Timer sync error:', err); }
+        }
+
+        function updateTimerDisplay() {
+            const h = Math.floor(remainingSeconds / 3600);
+            const m = Math.floor((remainingSeconds % 3600) / 60);
+            const s = remainingSeconds % 60;
+            const display = document.getElementById('timerDisplay');
+            
+            display.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            
+            if (remainingSeconds <= 0) {
+                display.style.opacity = '0.5';
+                document.getElementById('electionStatusBadge').textContent = 'VOTING CLOSED';
+                document.getElementById('electionStatusBadge').className = 'status-badge status-pending';
+            } else {
+                display.style.opacity = '1';
+            }
+        }
+
+        async function fetchVoteHistory() {
+            try {
+                const vote = await Auth.fetch('/api/my-vote');
+                document.getElementById('voteHistoryCard').classList.remove('hidden');
+                document.getElementById('histCandName').textContent = vote.candidate_name;
+                document.getElementById('histCandParty').textContent = vote.candidate_party;
+                
+                const date = new Date(vote.timestamp);
+                document.getElementById('histTimestamp').textContent = date.toLocaleString('en-US', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                });
+            } catch (err) {
+                console.error('History fetch error:', err);
+                // We keep it hidden if fetch fails or no record found
+            }
+        }
+
+        async function syncCandidacyStatus() {
+            try {
+                const request = await Auth.fetch('/api/my-candidate-request');
+                if (!request) return;
+
+                document.getElementById('candidacyFormWrapper').classList.add('hidden');
+                document.getElementById('candidacyStatusWrapper').classList.remove('hidden');
+                
+                const badge = document.getElementById('reqStatusBadge');
+                const info = document.getElementById('reqInfoDisplay');
+                const party = document.getElementById('reqPartyDisplay');
+
+                info.textContent = request.name;
+                party.textContent = request.party;
+                badge.textContent = request.status.toUpperCase();
+                
+                if (request.status === 'pending') {
+                    badge.className = 'status-badge status-pending';
+                } else if (request.status === 'approved') {
+                    badge.className = 'status-badge status-voted';
+                    badge.textContent = 'APPLICATION APPROVED';
+                } else {
+                    badge.className = 'status-badge status-pending';
+                    badge.style.borderColor = 'var(--error)';
+                    badge.style.color = 'var(--error)';
+                    badge.textContent = 'APPLICATION REJECTED';
+                }
+            } catch (err) { console.error('Candidacy sync error:', err); }
+        }
+
+        document.getElementById('candRequestForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('reqName').value;
+            const party = document.getElementById('reqParty').value;
+            const btn = e.target.querySelector('button');
+
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Submitting...';
+                await Auth.fetch('/api/request_candidate', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, party })
+                });
+                Notifier.show('Application sent to admin for review!', 'success');
+                await syncCandidacyStatus();
+            } catch (err) {
+                Notifier.show(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Submit Application';
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (countdownInterval) clearInterval(countdownInterval);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Console | VoteSafe</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('votesafe_theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+</head>
+<body>
+    <div id="loader" class="loading-overlay"><div class="spinner"></div></div>
+
+    <nav>
+        <div class="logo">VOTE_SAFE</div>
+        <div class="nav-links">
+            <a href="/" class="nav-item"><i class="fa-solid fa-house" style="margin-right: 6px;"></i>Home</a>
+            <a href="/dashboard" class="nav-item"><i class="fa-solid fa-table-columns" style="margin-right: 6px;"></i>Dashboard</a>
+            <a href="/candidates" class="nav-item"><i class="fa-solid fa-users" style="margin-right: 6px;"></i>Candidates</a>
+            <a href="/results" class="nav-item"><i class="fa-solid fa-chart-pie" style="margin-right: 6px;"></i>Results</a>
+            <a href="/admin" class="nav-item active"><i class="fa-solid fa-shield-halved" style="margin-right: 6px;"></i>Admin</a>
+            <div class="theme-toggle" onclick="ThemeManager.toggle()" title="Toggle Theme">
+                <i class="fas fa-sun"></i>
+            </div>
+            <button class="btn btn-outline" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</button>
+        </div>
+    </nav>
+
+    <div class="container animate-fade">
+        <header style="margin-bottom: 4rem;">
+            <h1 class="text-gradient" style="font-size: 2.5rem; margin-bottom: 0.5rem;">Administration Console</h1>
+            <p style="color: var(--text-secondary)">System management, candidate registration, and secure monitoring.</p>
+        </header>
+
+        <!-- Analytics Dashboard (NEW) -->
+        <div id="analyticsSection" class="animate-fade" style="margin-bottom: 3rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+            <div class="glass dash-card" style="padding: 1.5rem; text-align: center; border-left: none; border-bottom: 4px solid var(--accent-blue);">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase;">Total Votes</div>
+                <div id="statTotalVotes" class="text-gradient" style="font-size: 2.2rem; font-weight: 800; margin: 0.5rem 0;">0</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary);">Across All Candidates</div>
+            </div>
+            <div class="glass dash-card" style="padding: 1.5rem; text-align: center; border-left: none; border-bottom: 4px solid var(--success);">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase;">Leading Candidate</div>
+                <div id="statLeader" class="text-gradient" style="font-size: 1.6rem; font-weight: 800; margin: 0.5rem 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">None</div>
+                <div id="statLeaderVotes" style="font-size: 0.7rem; color: var(--text-secondary);">0 Votes Recorded</div>
+            </div>
+            <div class="glass dash-card" style="padding: 1.5rem; text-align: center; border-left: none; border-bottom: 4px solid var(--accent-blue);">
+                <div style="font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase;">Voter Participation</div>
+                <div id="statParticipation" class="text-gradient" style="font-size: 2.2rem; font-weight: 800; margin: 0.5rem 0;">0%</div>
+                <div id="statTotalUsers" style="font-size: 0.7rem; color: var(--text-secondary);">0 Registered Users</div>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 3rem;">
+            <!-- Election Control Panel (NEW) -->
+            <div class="glass dash-card animate-slide">
+                <h3 style="margin-bottom: 2rem; font-size: 1.3rem;"><i class="fa-solid fa-sliders" style="margin-right: 8px; color: var(--accent-blue);"></i>Election Control Panel</h3>
+                <div id="votingStatusDisplay" class="status-badge" style="margin-bottom: 2rem; width: fit-content;">Syncing Status...</div>
+                
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.85rem;">ELECTION DURATION (MINUTES)</label>
+                    <input type="number" id="electionDuration" value="60" min="1"
+                        style="width: 100%; padding: 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 10px; color: white; outline: none;">
+                </div>
+                
+                <div style="display: flex; gap: 1rem;">
+                    <button id="startVotingBtn" class="btn btn-primary" style="flex: 1" onclick="toggleVoting('start')">Open Polls</button>
+                    <button id="stopVotingBtn" class="btn btn-delete" style="flex: 1" onclick="toggleVoting('stop')">Close Polls</button>
+                </div>
+            </div>
+
+            <!-- Register Section -->
+            <div class="glass dash-card animate-slide" style="animation-delay: 0.1s;">
+                <h3 style="margin-bottom: 2rem; font-size: 1.3rem;"><i class="fa-solid fa-user-plus" style="margin-right: 8px; color: var(--success);"></i>Register New Candidate</h3>
+                <form id="addCandidateForm">
+                    <div class="form-group" style="margin-bottom: 1.5rem;">
+                        <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.85rem;">CANDIDATE NAME</label>
+                        <input type="text" id="candName" required placeholder="Full Name"
+                            style="width: 100%; padding: 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 10px; color: white; outline: none;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 2rem;">
+                        <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.85rem;">PARTY AFFILIATION</label>
+                        <input type="text" id="candParty" required placeholder="Party Name"
+                            style="width: 100%; padding: 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 10px; color: white; outline: none;">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%">Deploy Candidate</button>
+                </form>
+            </div>
+
+            <!-- Management Section -->
+            <div class="glass dash-card animate-slide" style="animation-delay: 0.1s;">
+                <h3 style="margin-bottom: 2rem; font-size: 1.3rem;"><i class="fa-solid fa-users-gear" style="margin-right: 8px; color: var(--text-secondary);"></i>Candidate Management</h3>
+                <div id="resultsList" style="display: flex; flex-direction: column; gap: 1rem;">
+                    <p style="text-align: center; color: var(--text-secondary)">Syncing list...</p>
+                </div>
+            </div>
+
+            <!-- Candidacy Requests (NEW) -->
+            <div class="glass dash-card animate-slide" style="animation-delay: 0.2s;">
+                <h3 style="margin-bottom: 2rem; font-size: 1.3rem;"><i class="fa-solid fa-inbox" style="margin-right: 8px; color: var(--accent-blue);"></i>Pending Candidacy Requests</h3>
+                <div id="requestsList" style="display: flex; flex-direction: column; gap: 1rem;">
+                    <p style="text-align: center; color: var(--text-secondary)">Syncing requests...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal-overlay hidden">
+        <div class="glass modal-content">
+            <h3 style="margin-bottom: 2rem;" class="text-gradient">Edit Candidate</h3>
+            <form id="editCandidateForm">
+                <input type="hidden" id="editCandId">
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.85rem;">CANDIDATE NAME</label>
+                    <input type="text" id="editCandName" required
+                        style="width: 100%; padding: 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 10px; color: white; outline: none;">
+                </div>
+                <div class="form-group" style="margin-bottom: 2rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.85rem;">PARTY AFFILIATION</label>
+                    <input type="text" id="editCandParty" required
+                        style="width: 100%; padding: 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 10px; color: white; outline: none;">
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <button type="submit" class="btn btn-primary" style="flex: 2">Save Changes</button>
+                    <button type="button" class="btn btn-outline" style="flex: 1" onclick="closeEditModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/auth_handler.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+
+    <script>
+        let pollingInterval = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!Auth.isAuthenticated()) {
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                const user = await Auth.fetch('/api/user');
+                if (!user.is_admin) {
+                    window.location.href = '/dashboard';
+                    return;
+                }
+                
+                await syncStatus();
+                await loadAdminData();
+                await loadRequests();
+                await loadStats();
+                pollingInterval = setInterval(() => {
+                    syncStatus();
+                    loadAdminData();
+                    loadRequests();
+                    loadStats();
+                }, 5000);
+                
+            } catch (err) {
+                console.error(err);
+                Auth.logout();
+            } finally {
+                const loader = document.getElementById('loader');
+                if (loader) {
+                    loader.style.opacity = '0';
+                    setTimeout(() => loader.classList.add('hidden'), 500);
+                }
+            }
+
+            document.getElementById('addCandidateForm').addEventListener('submit', handleAddCandidate);
+            document.getElementById('editCandidateForm').addEventListener('submit', handleEditCandidate);
+        });
+
+        async function syncStatus() {
+            try {
+                const status = await Auth.fetch('/api/voting-status');
+                const display = document.getElementById('votingStatusDisplay');
+                const startBtn = document.getElementById('startVotingBtn');
+                const stopBtn = document.getElementById('stopVotingBtn');
+
+                if (status.is_active) {
+                    display.textContent = 'Polls are OPEN';
+                    display.className = 'status-badge status-voted';
+                    startBtn.disabled = true;
+                    startBtn.style.opacity = '0.5';
+                    stopBtn.disabled = false;
+                    stopBtn.style.opacity = '1';
+                } else {
+                    display.textContent = 'Polls are CLOSED';
+                    display.className = 'status-badge status-pending';
+                    startBtn.disabled = false;
+                    startBtn.style.opacity = '1';
+                    stopBtn.disabled = true;
+                    stopBtn.style.opacity = '0.5';
+                }
+            } catch (err) { console.error('Status sync error:', err); }
+        }
+
+        async function toggleVoting(action) {
+            const duration = document.getElementById('electionDuration').value;
+            const btn = action === 'start' ? document.getElementById('startVotingBtn') : document.getElementById('stopVotingBtn');
+            const originalText = btn.textContent;
+
+            try {
+                btn.textContent = 'Processing...';
+                btn.disabled = true;
+
+                await Auth.fetch('/api/admin/voting-toggle', {
+                    method: 'POST',
+                    body: JSON.stringify({ action, duration })
+                });
+
+                Notifier.show(`Election ${action === 'start' ? 'started' : 'stopped'} successfully!`, 'success');
+                await syncStatus();
+            } catch (err) {
+                Notifier.show(err.message, 'error');
+            } finally {
+                btn.textContent = originalText;
+            }
+        }
+
+        window.addEventListener('beforeunload', () => {
+            if (pollingInterval) clearInterval(pollingInterval);
+        });
+
+        async function loadStats() {
+            try {
+                const stats = await Auth.fetch('/api/admin/stats');
+                document.getElementById('statTotalVotes').textContent = stats.total_votes;
+                document.getElementById('statLeader').textContent = stats.leader;
+                document.getElementById('statLeaderVotes').textContent = `${stats.leader_votes} Votes Recorded`;
+                document.getElementById('statParticipation').textContent = `${stats.participation_rate}%`;
+                document.getElementById('statTotalUsers').textContent = `${stats.total_users} Registered Users`;
+            } catch (err) { console.error('Stats load error:', err); }
+        }
+
+        async function loadAdminData() {
+            try {
+                // If a modal is open, we stop polling temporarily to prevent layout shifts
+                if (!document.getElementById('editModal').classList.contains('hidden')) return;
+
+                const results = await Auth.fetch('/api/results');
+                const list = document.getElementById('resultsList');
+                list.innerHTML = '';
+
+                if (results.length === 0) {
+                    list.innerHTML = '<p style="text-align: center; color: var(--text-secondary)">No candidates registered.</p>';
+                    return;
+                }
+
+                results.forEach(r => {
+                    const item = document.createElement('div');
+                    item.className = 'glass';
+                    item.style.display = 'flex';
+                    item.style.justifyContent = 'space-between';
+                    item.style.alignItems = 'center';
+                    item.style.padding = '1rem 1.5rem';
+                    item.style.background = 'rgba(255,255,255,0.03)';
+                    item.style.borderRadius = '12px';
+                    
+                    item.innerHTML = `
+                        <div>
+                            <div style="font-weight: 600;">${r.name}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">${r.votes} Votes</div>
+                        </div>
+                        <div class="manage-actions">
+                            <button class="btn btn-edit" onclick="openEditModal('${r.id}', '${r.name}', '...')">Edit</button>
+                            <button class="btn btn-delete" data-id="${r.id}" onclick="handleDeleteCandidate(event, '${r.id}', '${r.name}')">Delete</button>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                });
+            } catch (err) {
+                console.error('Error loading results:', err);
+            }
+        }
+
+        // --- CRUD Logic ---
+
+        async function handleAddCandidate(e) {
+            e.preventDefault();
+            const name = document.getElementById('candName').value;
+            const party = document.getElementById('candParty').value;
+
+            try {
+                await Auth.fetch('/api/admin/add-candidate', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, party })
+                });
+                Notifier.show('Candidate added successfully!', 'success');
+                e.target.reset();
+                loadAdminData();
+            } catch (err) { Notifier.show(err.message, 'error'); }
+        }
+
+        function openEditModal(id, currentName) {
+            document.getElementById('editCandId').value = id;
+            document.getElementById('editCandName').value = currentName;
+            document.getElementById('editModal').classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+        }
+
+        async function handleEditCandidate(e) {
+            e.preventDefault();
+            const id = document.getElementById('editCandId').value;
+            const name = document.getElementById('editCandName').value;
+            const party = document.getElementById('editCandParty').value;
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+
+            try {
+                // UX Improvement: Loading Text
+                submitBtn.textContent = 'Saving...';
+                submitBtn.disabled = true;
+
+                await Auth.fetch(`/api/admin/update_candidate/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ name, party })
+                });
+                
+                Notifier.show('Updated successfully!', 'success');
+                closeEditModal();
+                loadAdminData();
+            } catch (err) { 
+                Notifier.show(err.message, 'error'); 
+            } finally {
+                submitBtn.textContent = originalText;
+                submitBtn.disabled = false;
+            }
+        }
+
+        async function handleDeleteCandidate(event, id, name) {
+            if (!confirm(`Are you sure you want to delete ${name}? This will remove all associated results.`)) return;
+
+            const btn = event.currentTarget; // Get the specific button clicked
+            const originalText = btn.innerHTML; // Store HTML in case it has icons
+
+            try {
+                // UX Improvement: Deleting state
+                btn.textContent = 'Deleting...';
+                btn.disabled = true;
+
+                await Auth.fetch(`/api/admin/delete_candidate/${id}`, { method: 'DELETE' });
+                Notifier.show('Candidate deleted successfully', 'success');
+                loadAdminData();
+            } catch (err) { 
+                Notifier.show(err.message, 'error'); 
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function loadRequests() {
+            try {
+                const requests = await Auth.fetch('/api/admin/requests');
+                const list = document.getElementById('requestsList');
+                list.innerHTML = '';
+
+                if (requests.length === 0) {
+                    list.innerHTML = '<p style="text-align: center; color: var(--text-secondary)">No pending requests.</p>';
+                    return;
+                }
+
+                requests.forEach(r => {
+                    const item = document.createElement('div');
+                    item.className = 'glass';
+                    item.style.display = 'flex';
+                    item.style.justifyContent = 'space-between';
+                    item.style.alignItems = 'center';
+                    item.style.padding = '1rem 1.5rem';
+                    item.style.background = 'rgba(255,255,255,0.03)';
+                    item.style.borderRadius = '12px';
+                    
+                    item.innerHTML = `
+                        <div>
+                            <div style="font-weight: 600;">${r.name}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">${r.party}</div>
+                        </div>
+                        <div class="manage-actions">
+                            <button class="btn btn-edit" onclick="handleRequestAction('${r.id}', 'approve')">Approve</button>
+                            <button class="btn btn-delete" onclick="handleRequestAction('${r.id}', 'reject')">Reject</button>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                });
+            } catch (err) { console.error('Error loading requests:', err); }
+        }
+
+        async function handleRequestAction(id, action) {
+            const btn = event.currentTarget;
+            const originalText = btn.textContent;
+
+            try {
+                btn.disabled = true;
+                btn.textContent = '...';
+                
+                await Auth.fetch(`/api/admin/${action}_request/${id}`, { method: 'POST' });
+                Notifier.show(`Request ${action}d successfully!`, 'success');
+                
+                loadAdminData();
+                loadRequests();
+            } catch (err) {
+                Notifier.show(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+    </script>
+</body>
+</html>
