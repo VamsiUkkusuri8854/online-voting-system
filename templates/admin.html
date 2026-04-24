@@ -268,16 +268,39 @@
                     item.style.background = 'rgba(255,255,255,0.03)';
                     item.style.borderRadius = '12px';
                     
-                    item.innerHTML = `
-                        <div>
-                            <div style="font-weight: 600;">${r.name}</div>
-                            <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">${r.votes} Votes</div>
-                        </div>
-                        <div class="manage-actions">
-                            <button class="btn btn-edit" onclick="openEditModal('${r.id}', '${r.name}', '...')">Edit</button>
-                            <button class="btn btn-delete" data-id="${r.id}" onclick="handleDeleteCandidate(event, '${r.id}', '${r.name}')">Delete</button>
-                        </div>
-                    `;
+                    // Use textContent to safely inject name to prevent XSS and quote breakage
+                    const nameSpan = document.createElement('span');
+                    nameSpan.style.fontWeight = '600';
+                    nameSpan.textContent = r.name;
+
+                    const votesDiv = document.createElement('div');
+                    votesDiv.style.fontSize = '0.75rem';
+                    votesDiv.style.color = 'var(--text-secondary)';
+                    votesDiv.style.textTransform = 'uppercase';
+                    votesDiv.textContent = `${r.votes} Votes`;
+
+                    const infoDiv = document.createElement('div');
+                    infoDiv.appendChild(nameSpan);
+                    infoDiv.appendChild(votesDiv);
+
+                    const actionsDiv = document.createElement('div');
+                    actionsDiv.className = 'manage-actions';
+
+                    const editBtn = document.createElement('button');
+                    editBtn.className = 'btn btn-edit';
+                    editBtn.textContent = 'Edit';
+                    editBtn.onclick = () => openEditModal(r.id, r.name, r.party);
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'btn btn-delete';
+                    deleteBtn.textContent = 'Delete';
+                    deleteBtn.onclick = (e) => handleDeleteCandidate(e, r.id, r.name);
+
+                    actionsDiv.appendChild(editBtn);
+                    actionsDiv.appendChild(deleteBtn);
+
+                    item.appendChild(infoDiv);
+                    item.appendChild(actionsDiv);
                     list.appendChild(item);
                 });
             } catch (err) {
@@ -303,9 +326,10 @@
             } catch (err) { Notifier.show(err.message, 'error'); }
         }
 
-        function openEditModal(id, currentName) {
+        function openEditModal(id, currentName, currentParty) {
             document.getElementById('editCandId').value = id;
             document.getElementById('editCandName').value = currentName;
+            document.getElementById('editCandParty').value = currentParty || '';
             document.getElementById('editModal').classList.remove('hidden');
         }
 
@@ -345,8 +369,8 @@
         async function handleDeleteCandidate(event, id, name) {
             if (!confirm(`Are you sure you want to delete ${name}? This will remove all associated results.`)) return;
 
-            const btn = event.currentTarget; // Get the specific button clicked
-            const originalText = btn.innerHTML; // Store HTML in case it has icons
+            const btn = event.target; // event.target is safe here
+            const originalText = btn.innerHTML; 
 
             try {
                 // UX Improvement: Deleting state
